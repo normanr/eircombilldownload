@@ -5,12 +5,19 @@ import json
 import mechanize
 import os
 import re
+import subprocess
+import sys
+import time
+import urllib
 import urlparse
 
-# Create .eircombilldownload in your homedir like this:
+# Create .eircombilldownload in your home directory like this:
 # { "username": "user@example.com", "passsword": "letmein" }
 with open(os.path.expanduser('~/.eircombilldownload')) as fp:
   config = json.load(fp)
+
+if len(sys.argv) > 1:
+  os.chdir(sys.argv[1])
 
 # Browser
 br = mechanize.Browser()
@@ -51,14 +58,22 @@ data = json.loads(ajax.open('accounts').read())
 for account in data['envelope']['data']:
   current_account = account['accountNumber']
 
-  pdfUrl = "https://www.eircom.ie/cgi-bin/bvsm/bveircom/acctmgt/viewbill.jsp"
-  pdfUrl += "?BV_SessionID=" + sessionId
-  pdfUrl += "&BV_EngineID=" + engineId
-  pdfUrl += "&viewBillAction=viewPDFFile"
-  pdfUrl += "&pdfAccountNo=" + current_account
+  pdfUrl = ('https://www.eircom.ie/cgi-bin/bvsm/bveircom/acctmgt/viewbill.jsp?'
+    + urllib.urlencode({
+        'BV_SessionID' : sessionId,
+        'BV_EngineID' : engineId,
+        'viewBillAction' : 'viewPDFFile',
+        'pdfAccountNo' : current_account,
+  }))
 
-  r = br.open(pdfUrl)
-  data = r.read()
+  page = br.open(pdfUrl).read()
 
-  m = re.search("replace\('(.*)'\)", data)
-  print urlparse.urljoin(pdfUrl, m.group(1))
+  m = re.search("replace\('(.*)'\)", page)
+  pdfUrl = urlparse.urljoin(pdfUrl, m.group(1))
+  localPdf = pdfBase = 'eircom-%s-%s.pdf' % (
+      current_account, time.strftime('%Y-%m'))
+  index = 0
+  while os.path.exists(localPdf):
+    index += 1
+    localPdf = '%s.%d' % (pdfBase, index)
+  subprocess.call(['wget', '-O', localPdf, pdfUrl])
